@@ -1,0 +1,204 @@
+\section{Parte 6: detrás de la serie hay clientes}
+\label{sec:parte6}
+
+El análisis RFM usa \texttt{limpiar(df, requiere\_cliente=True)}, es decir,
+las reglas 1 a 6 de la bitácora: las mismas de la serie más la que quita las
+filas sin \texttt{CustomerID}. Todo lo genera \texttt{parte6.py}. Para cada
+cliente se calcula:
+\begin{itemize}
+  \item \textbf{R}: días entre su última factura de venta (no cancelación) y
+    el 1 de octubre de 2011;
+  \item \textbf{F}: número de facturas de venta distintas;
+  \item \textbf{M}: venta neta total, con las cancelaciones restando.
+\end{itemize}
+
+\subsection{Inciso 6.1: R, F y M antes del 1 de octubre}
+
+Con las transacciones anteriores al 1 de octubre de 2011 hay \textbf{3\,658
+clientes}. La tabla~\ref{tab:p6_resumen} resume sus tres variables, que son
+muy asimétricas: la mitad de los clientes compró dos veces o menos, mientras
+que el que más compró tiene 139 facturas, y el monto va de $-$\pounds4\,288 a
+\pounds201\,772, con mediana de \pounds562.
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p6_rfm_resumen}
+  \caption{Distribución de R, F y M para los 3\,658 clientes con transacciones
+  antes del 1 de octubre de 2011. P20, P40, P60 y P80 son los cortes de los
+  quintiles.}
+  \label{tab:p6_resumen}
+\end{table}
+
+\paragraph{Clientes con $M\leq0$: 54.} De ellos, 51 tienen $M<0$ y 3 tienen
+$M=0$. Hay dos tipos:
+\begin{itemize}
+  \item \textbf{43 no tienen ninguna factura de venta} en el periodo, solo
+    cancelaciones: devolvieron mercancía que habían comprado antes del 1 de
+    diciembre de 2010, fuera de los datos. No tienen una ``última compra''
+    observada, así que se les asigna $R=305$, un día más que a quien compró
+    el primer día de los datos (su última compra fue antes).
+  \item \textbf{11 compraron y luego cancelaron} lo mismo o más, como el
+    cliente 12346 del inciso 1.4 (74\,215 frascos vendidos y cancelados el
+    mismo día, $F=1$ y $M=0$).
+\end{itemize}
+\emph{Se quedan en el análisis}, como pide el inciso 6.2, y la decisión es
+defendible: son clientes reales que tuvieron actividad, y su $M$ (y, para los
+43, su $R$) los manda naturalmente al puntaje más bajo. Quitarlos cambiaría
+los cortes de los quintiles de todos los demás. Lo que no se hace es tratarlos
+como clientes valiosos: en ningún análisis de valor pueden aparecer arriba.
+
+\paragraph{¿Por qué no usar nada posterior al 1 de octubre?} Porque lo que se
+quiere evaluar es si R, F y M \emph{anticipan} quién compra entre el 1 de
+octubre y el 8 de diciembre. Si se usaran transacciones posteriores, la
+respuesta se colaría en las variables: un cliente que compró en noviembre
+tendría una recencia pequeña \emph{porque} compró en noviembre, y una
+frecuencia y un monto mayores por la misma razón. El AUC del inciso 6.3 saldría
+excelente y no mediría nada. Es la misma fuga del inciso 5.4: una variable
+que contiene el futuro hace que cualquier modelo se vea bien.
+
+\subsection{Inciso 6.2: puntajes por quintiles}
+
+A cada cliente se le asigna un puntaje de 1 a 5 en cada dimensión según su
+quintil; en recencia, 5 es el más reciente. Se siguió exactamente el
+procedimiento del enunciado: se ordenan todos los clientes por
+\texttt{CustomerID}, se barajan con
+\texttt{numpy.random.default\_rng(2026).permutation} y se aplica
+\texttt{pd.qcut(x.rank(method='first'), 5)}, con $x=F$, $x=M$ y $x=-R$.
+
+\paragraph{El problema con F.} F es un conteo pequeño con muchísimos empates:
+el 39.6\% de los clientes tiene $F=1$, el 18.9\% tiene $F=2$, el 12.1\% tiene
+$F=3$ y el 1.2\% tiene $F=0$. El primer quintil (20\%) y el segundo (40\%)
+caen dentro del bloque de $F=1$, así que los cortes de los quintiles se
+repiten: \texttt{pd.qcut(F, 5)} directamente falla con el error ``Bin edges
+must be unique'', porque los cortes son $0, 1, 1, 3, 5, 139$. No hay forma de
+partir a los clientes en cinco grupos del mismo tamaño usando solo su F.
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p6_puntaje_f}
+  \caption{Número de clientes por valor de $F$ y puntaje asignado, para
+  $F\leq6$. Los clientes con el mismo $F$ que aparecen en varias columnas
+  recibieron su puntaje por sorteo.}
+  \label{tab:p6_puntaje_f}
+\end{table}
+
+\paragraph{Lo que implica el desempate.} Con \texttt{rank(method='first')},
+los clientes empatados se ordenan según su posición en el barajado, así que el
+puntaje de los clientes que caen en una frontera se decide por sorteo
+(tabla~\ref{tab:p6_puntaje_f}). Los 1\,449 clientes con $F=1$ quedaron
+repartidos entre el puntaje 1 (689), el 2 (731) y el 3 (29); los de $F=3$,
+entre 3 y 4; los de $F=5$, entre 4 y 5. Para dos clientes con la misma F que
+caen en puntajes distintos, \emph{la diferencia de puntaje no significa nada}:
+se comportaron igual y uno sacó mejor número en la rifa. Con otra semilla los
+puntajes cambian, y cualquier análisis que compare los puntajes 1 y 2 de F
+está comparando dos muestras al azar del mismo grupo. Se nota en el inciso
+6.3: los puntajes 1 y 2 de F tienen exactamente la misma tasa de compra (31.8\%
+y 31.7\%). Fijar la semilla hace que todos obtengan los mismos puntajes, pero
+no les da significado.
+
+\subsection{Inciso 6.3: ¿quién compró del 1 de octubre al 8 de diciembre?}
+
+Sea $\text{compra}_i=1$ si el cliente $i$ tiene alguna factura de venta entre
+el 1 de octubre y el 8 de diciembre de 2011. Lo hizo el 50.4\% de los 3\,658
+clientes. La tabla~\ref{tab:p6_tasas} y la figura~\ref{fig:p6_tasas} muestran
+la tasa de compra por puntaje en cada dimensión.
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p6_tasas}
+  \hspace{2em}
+  \tabla{p6_auc}
+  \caption{Izquierda: fracción de clientes que compró entre el 1 de octubre y
+  el 8 de diciembre, por puntaje. Derecha: AUC de cada variable cruda y de la
+  suma de los tres puntajes como clasificadores de $\text{compra}_i$.}
+  \label{tab:p6_tasas}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{p6_tasas.png}
+  \caption{Tasa de compra en la ventana de prueba por puntaje de R, F y M.}
+  \label{fig:p6_tasas}
+\end{figure}
+
+Las tres dimensiones ordenan bien: la tasa de compra crece con el puntaje en
+las tres. Pero no separan igual.
+\begin{itemize}
+  \item \textbf{F separa mejor}: del 31.7\% en los puntajes bajos al 85.7\% en
+    el puntaje 5, el rango más amplio, y el mayor AUC de las tres variables
+    crudas, 0.721. Quien ya compró muchas veces vuelve a comprar.
+  \item \textbf{M} queda muy cerca (de 28.8\% a 80.2\%, AUC 0.710). Es
+    natural: un cliente que compra muchas veces acumula más monto, así que M
+    y F miden en buena parte lo mismo.
+  \item \textbf{R} es la que menos separa (AUC 0.674). Distingue bien entre
+    los puntajes bajos (27.5\% en el 1, 55.2\% en el 3), pero se satura
+    arriba: los puntajes 4 y 5 tienen la misma tasa (65.9\% y 66.1\%). Haber
+    comprado hace dos semanas o hace seis no hace diferencia en una ventana
+    de diez semanas que además es la temporada alta, cuando incluso los
+    clientes menos recientes vuelven.
+  \item \textbf{La suma de los tres puntajes} tiene el mejor AUC, 0.735,
+    pero apenas por encima de F sola: combinar las tres dimensiones agrega
+    poco, porque están muy correlacionadas.
+\end{itemize}
+Un AUC de 0.72 significa que, si se toma al azar un cliente que compró y uno
+que no, F le da el valor más alto al que compró el 72\% de las veces: útil,
+pero lejos de una predicción segura.
+
+\subsection{Inciso 6.4: los campeones}
+
+Los clientes con puntaje 4 o 5 en las tres dimensiones son \textbf{792, el
+21.7\% de los clientes}. Entre el 1 de octubre y el 8 de diciembre
+\textbf{generaron el 53.5\% de la venta neta} de todos los clientes con
+\texttt{CustomerID}, incluidos los nuevos: \pounds1.28 millones de
+\pounds2.40 millones (tabla~\ref{tab:p6_grupos}). El 81.2\% de los campeones
+compró en esa ventana. Es la concentración típica de un negocio mayorista: uno
+de cada cinco clientes trae más de la mitad del dinero. Para una tienda, saber
+quiénes son vale más que cualquier pronóstico de la serie agregada.
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p6_grupos}
+  \caption{Reparto de la venta neta del 1 de octubre al 8 de diciembre de 2011
+  entre los clientes con \texttt{CustomerID}. ``Clientes con movimiento'' es
+  cuántos clientes de cada grupo tuvieron alguna transacción en la ventana.
+  Un cliente es nuevo si no tiene ninguna factura de venta antes del 1 de
+  octubre.}
+  \label{tab:p6_grupos}
+\end{table}
+
+\subsection{Inciso 6.5: los clientes nuevos}
+
+De los 2\,596 clientes con movimiento entre el 1 de octubre y el 8 de
+diciembre, \textbf{723 son nuevos}: no tienen ninguna factura de venta antes
+del 1 de octubre. Generaron \textbf{el 15.7\% de la venta neta} de la ventana,
+\pounds377\,860 (tabla~\ref{tab:p6_grupos}).
+
+\paragraph{¿Puede un RFM pronosticar esa venta?} No, ni el RFM ni ningún
+modelo construido cliente por cliente. Un modelo así solo puede pronosticar a
+los clientes que tiene en su tabla, y un cliente nuevo no tiene fila: no hay R,
+ni F, ni M que calcular, porque todavía no ha hecho nada. Lo más que puede
+hacer un modelo por cliente es predecir que los clientes conocidos dejen de
+comprar; nunca que aparezcan clientes desconocidos. Ese 15.7\% es un error
+estructural, que no se corrige con un mejor modelo. Y es un mínimo: la venta
+sin \texttt{CustomerID}, el 15.4\% de toda la venta según el inciso 1.2(f),
+tampoco la ve ningún modelo por cliente.
+
+\paragraph{Conexión con la Parte 5 y con el Proyecto 1.} En el vocabulario de
+FPP2 (§10.3--10.4), la Parte 5 es un pronóstico \emph{top-down}: se
+pronostica directamente la venta total. Un modelo que sume pronósticos cliente
+por cliente sería \emph{bottom-up}. Solo el \emph{top-down} puede ver a los
+clientes nuevos. No los ve como individuos, sino como parte del nivel de la
+serie: la llegada de cientos de clientes nuevos en el cuarto trimestre es una
+de las razones por las que la venta se duplicó desde septiembre, y es
+justamente ese cambio de nivel el que S2 siguió y le dio la victoria en el
+inciso 5.3. El \emph{bottom-up}, en cambio, empieza con una desventaja: aunque
+pronosticara perfecto a cada cliente conocido, se quedaría corto en al menos
+un 15.7\% de la venta con cliente. Para la comparación que pide el Proyecto 1,
+esto significa que un pronóstico cliente por cliente necesita un componente
+aparte para la venta de clientes nuevos (que tendría que ser de algún modo
+\emph{top-down}), o va a perder contra la serie agregada en cualquier periodo
+en que la tienda gane clientes, como en la temporada navideña.
