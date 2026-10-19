@@ -1,0 +1,219 @@
+\section{Parte 1: limpieza}
+\label{sec:parte1}
+
+La limpieza vive en \texttt{limpiar.py} y la reproduce \texttt{parte1.py}. El
+archivo se carga con \texttt{datos.cargar\_crudo()}, que lee
+\texttt{InvoiceNo}, \texttt{StockCode} y \texttt{CustomerID} como texto. El
+enunciado sugiere hacerlo y pide averiguar por qué; leyendo el archivo sin
+indicarle tipos a pandas se ve el problema en cada columna:
+\begin{itemize}
+  \item \texttt{InvoiceNo} queda como una columna con 532\,618 enteros
+    (\texttt{536365}) y 9\,291 cadenas (\texttt{C536379}) revueltos. Entonces
+    \texttt{str.startswith('C')} devuelve \texttt{NaN}, no \texttt{False}, en
+    todas las filas numéricas, y cualquier filtro de cancelaciones construido
+    así falla en silencio.
+  \item \texttt{StockCode} mezcla 487\,036 códigos numéricos con 54\,873
+    alfanuméricos (\texttt{85123A}, \texttt{POST}). Una regla sobre el texto
+    del código, como ``empieza con cinco dígitos'', se salta todas las filas
+    que pandas convirtió en enteros.
+  \item \texttt{CustomerID} tiene faltantes, y como una columna entera de
+    pandas no admite \texttt{NaN}, se convierte a \texttt{float}:
+    \texttt{17850.0}. Un identificador no es una cantidad: no se suma ni se
+    promedia, y no debería tener decimales.
+\end{itemize}
+
+\subsection{Inciso 1.1: el archivo crudo}
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p1_resumen}
+  \caption{Tamaño del archivo original, antes de limpiar.}
+  \label{tab:p1_resumen}
+\end{table}
+
+El archivo tiene 541\,909 líneas de 25\,900 facturas, 4\,070 códigos de
+producto y 4\,372 clientes (tabla~\ref{tab:p1_resumen}). El 24.9\% de las
+filas no tiene \texttt{CustomerID}. El número de productos depende de cómo se
+cuente: 117 códigos aparecen también en minúscula (\texttt{85123a} junto a
+\texttt{85123A}), y unificándolos quedan 3\,958.
+
+\subsection{Inciso 1.2: caso por caso}
+
+La tabla~\ref{tab:p1_casos} cuenta cada caso sobre los datos crudos, sin
+aplicar ninguna otra regla, y resume la decisión. El monto es la suma con
+signo de $\texttt{Quantity}\times\texttt{UnitPrice}$ de esas filas.
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p1_casos}
+  \caption{Casos del inciso 1.2 sobre los datos crudos. Un caso puede
+  traslapar con otro; el efecto conjunto está en la bitácora
+  (tabla~\ref{tab:p1_bitacora}).}
+  \label{tab:p1_casos}
+\end{table}
+
+\paragraph{(a) Duplicados exactos: se van.} Hay 5\,268 filas idénticas en las
+ocho columnas a otra fila anterior: misma factura, mismo producto, misma
+cantidad y mismo minuto. Una factura que de verdad incluyera dos veces el
+mismo artículo lo registraría como una línea con la cantidad sumada; dos
+líneas idénticas son una doble captura. Se conserva la primera. Representan
+\pounds21\,741.
+
+\paragraph{(b) Facturas que no empiezan con un dígito.} Hay dos prefijos. El
+\texttt{C} marca 9\,288 cancelaciones, todas con cantidad negativa: \emph{se
+quedan}, porque la venta neta diaria las define como líneas que restan el día
+en que ocurren. El \texttt{A} aparece en tres facturas del 12 de agosto de 2011
+con el código \texttt{B}, ``Adjust bad debt'', por $+11\,062$ y dos veces
+$-11\,062$ libras: \emph{se van}, porque son asientos contables de deuda
+incobrable, no ventas ni devoluciones de mercancía.
+
+\paragraph{(c) Códigos que no son productos.} La tabla~\ref{tab:p1_codigos}
+lista todos los códigos que no empiezan con cinco dígitos. No todos son
+iguales:
+\begin{itemize}
+  \item \emph{Se van} los cargos que no son mercancía: envío (\texttt{POST},
+    \texttt{DOT}, \texttt{C2}), comisiones (\texttt{AMAZONFEE},
+    \texttt{CRUK}), cargos bancarios, muestras (\texttt{S}), el ajuste de
+    deuda \texttt{B} y los vales de regalo \texttt{gift\_0001\_*}, que son
+    dinero adelantado y se contarían dos veces cuando se canjearan. El caso
+    que más pesa es \texttt{AMAZONFEE}: 32 de sus 34 filas son
+    ``cancelaciones'' de hasta \pounds17\,836, que en realidad son la
+    comisión que cobra Amazon. Dejarlas habría restado \pounds221\,521 de
+    ventas que nunca se devolvieron.
+  \item \emph{Se quedan} los \texttt{DCGS...} (artículos de la tienda
+    \emph{dotcom}, como bolsas de fiesta o collares) y \texttt{PADS}, que sí
+    son productos aunque su código no tenga cinco dígitos.
+  \item \emph{Se quedan} también \texttt{D} (descuento) y \texttt{M}
+    (ajuste manual). No son productos, pero corrigen el precio de mercancía
+    que sí se vendió: un descuento reduce lo que la tienda cobró. El inciso
+    1.4 muestra qué pasa si se quitan: la factura 556444 cobró por error 60
+    canastas a \pounds649.50 cada una, y la corrección es la línea
+    \texttt{M} de la cancelación C556445. Si se quitaran las \texttt{M}, la
+    serie se quedaría con una venta fantasma de \pounds38\,970.
+  \item \emph{Se transforman} los 117 códigos en minúscula, que se pasan a
+    mayúscula.
+\end{itemize}
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p1_codigos}
+  \caption{Códigos que no empiezan con cinco dígitos, en los datos crudos. La
+  columna de cancelación es el porcentaje de sus filas en facturas \texttt{C}.}
+  \label{tab:p1_codigos}
+\end{table}
+
+\paragraph{(d) Precios iguales a cero o negativos: se van.} Los dos precios
+negativos son las líneas de deuda incobrable del caso (b). Los 2\,515 precios
+en cero no aportan nada a la venta (su monto es exactamente cero), y casi
+todos son movimientos de inventario sin cliente: 1\,336 tienen cantidad
+negativa (caso e) y, de las que tienen cantidad positiva, solo 40 tienen
+cliente, probablemente obsequios. Para la serie da igual quitarlos o no; se
+quitan para que no inflen la frecuencia de compra en la Parte 6.
+
+\paragraph{(e) Cantidades negativas que no son cancelaciones: se van.} Son
+1\,336 filas, todas con precio cero y ninguna con cliente. Su descripción lo
+explica: vacía (862), ``check'' (123), ``damaged'' o ``damages'' (103),
+``?'' (41), ``sold as set on dotcom'', ``thrown away'', ``wet damaged'',
+``missing''\dots{} Son ajustes de inventario por mercancía dañada, perdida o
+reetiquetada, no devoluciones de clientes.
+
+\paragraph{(f) Filas sin \texttt{CustomerID}: depende.} Para la serie de
+ventas \emph{se quedan}: una venta sin cliente identificado sigue siendo
+dinero que entró a la tienda. Después de la limpieza son el 24.8\% de las
+filas y el 15.4\% de la venta neta (\pounds1.50 millones), casi todas del
+Reino Unido; quitarlas bajaría el nivel de la serie y, si su peso cambia con
+el tiempo, también su forma. Para la Parte 6 \emph{se van}, porque el RFM
+necesita saber quién compró. Por eso \texttt{limpiar} tiene el argumento
+\texttt{requiere\_cliente}.
+
+\subsection{Inciso 1.3: bitácora de limpieza}
+
+Las reglas se aplican en el orden de la tabla~\ref{tab:p1_bitacora}. La
+columna ``Sola'' cuenta las filas que la regla quitaría aplicada sobre los
+datos crudos; ``En orden'' cuenta las que realmente quita después de las
+anteriores. El monto corresponde a las filas que quita en orden: el neto es la
+suma con signo y el absoluto, la suma de $|\texttt{Quantity}\times
+\texttt{UnitPrice}|$. La regla 6 solo se aplica para la Parte 6.
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p1_bitacora}
+  \caption{Bitácora de limpieza, en el orden en que se aplican las reglas.}
+  \label{tab:p1_bitacora}
+\end{table}
+
+El orden sí cambia los conteos. La regla 5 no quita ninguna fila en orden,
+pero aplicada sola quitaría 1\,336: todas las cantidades negativas sin
+cancelación tienen precio cero, así que la regla 4 ya las eliminó. Si el orden
+fuera el inverso, la regla 5 se llevaría 1\,336 filas y la 4, 1\,336 menos.
+Del mismo modo, la regla 3 quita 2\,293 filas y no 2\,297 porque las tres
+líneas \texttt{B} ya cayeron con el prefijo \texttt{A} y una más era
+duplicado; y la regla 4 quita 2\,499 y no 2\,517 porque los dos precios
+negativos ya cayeron con el prefijo \texttt{A}, cinco eran duplicados y once
+tenían un código que no es producto.
+Ninguna de estas diferencias cambia el resultado final: las reglas solo
+deciden a qué renglón de la bitácora se le atribuye cada fila.
+
+Para la serie de ventas (reglas 1 a 5) quedan 531\,846 filas con una venta
+neta total de \pounds9\,696\,590; 8\,989 de esas filas son cancelaciones que
+suman $-$\pounds628\,382. Para el RFM (reglas 1 a 6) quedan 400\,190 filas.
+
+\subsection{Inciso 1.4: las seis líneas más grandes}
+
+La tabla~\ref{tab:p1_top6} muestra las seis líneas con mayor
+$|\texttt{Quantity}\times\texttt{UnitPrice}|$ en los datos crudos. Son tres
+pares venta--cancelación.
+
+\begin{table}[H]
+  \centering
+  \footnotesize
+  \tabla{p1_top6}
+  \caption{Las seis líneas con mayor monto absoluto antes de limpiar.
+  ``¿Sobrevive?'' indica si la línea sigue en los datos limpios.}
+  \label{tab:p1_top6}
+\end{table}
+
+\begin{itemize}
+  \item \textbf{Paper Craft, Little Birdie (cliente 16446).} El 9 de diciembre
+    de 2011 a las 9:15 la factura 581483 vende 80\,995 unidades a \pounds2.08,
+    \pounds168\,470 en una sola línea, y doce minutos después la C581484 la
+    cancela completa. El cliente solo tiene otra compra en todo el año: dos
+    artículos por \pounds2.90 en mayo. Es casi seguro un error de captura,
+    corregido de inmediato.
+  \item \textbf{Medium Ceramic Top Storage Jar (cliente 12346).} El 18 de
+    enero de 2011 la factura 541431 vende 74\,215 frascos a \pounds1.04
+    (\pounds77\,184), y dieciséis minutos después la C541433 la cancela. Es
+    la única actividad del cliente en todo el archivo, así que su venta neta
+    total es cero; vuelve a aparecer en la Parte 6 como un cliente con
+    $M\leq 0$.
+  \item \textbf{Picnic Basket Wicker 60 Pieces (cliente 15098).} El 10 de
+    junio de 2011 la secuencia completa es: 556442 vende 60 canastas
+    pequeñas a \pounds4.95 (\pounds297); 556444 cobra 60 unidades a
+    \pounds649.50, que es el precio del juego de 60 piezas, no de una canasta
+    (\pounds38\,970); C556445 lo corrige con una línea \texttt{Manual} de
+    $-$\pounds38\,970; 556446 cobra el juego correcto, una unidad a
+    \pounds649.50; y C556448 cancela las canastas pequeñas. Lo que el cliente
+    compró en realidad fue un juego de \pounds649.50.
+\end{itemize}
+
+\paragraph{¿Las resuelve la limpieza?} No: las seis sobreviven, y está bien
+que sobrevivan. Ninguna regla las identifica como errores (son productos
+reales, con precio positivo y con cliente), y quitar una sola mitad del par
+sería peor que dejar las dos. Si una regla quitara la venta de 80\,995
+unidades por ``atípica'', la cancelación quedaría huérfana y restaría
+\pounds168\,470 ese día. Por la misma razón la regla de códigos no quita la
+línea \texttt{M}: quitarla dejaría la venta de \pounds38\,970.
+
+\paragraph{¿Las resuelve el neteo por día?} Sí, porque en los tres casos la
+venta y su corrección ocurren el mismo día, con minutos de diferencia. En la
+venta neta del 18 de enero el par del frasco suma exactamente cero; la del 10
+de junio recibe del cliente 15098 exactamente los \pounds649.50 que compró; y
+el par del 9 de diciembre suma cero (además, la Parte 2 descarta ese día por
+incompleto). La serie diaria es inmune a estos errores siempre que se corrijan
+el mismo día. Un análisis por cliente o por factura no lo es: en la Parte 6
+cada una de estas facturas cuenta como una compra para la frecuencia, aunque
+el monto neto sea cero.

@@ -22,6 +22,17 @@
 
 \newcolumntype{L}{>{\raggedright\arraybackslash}X}
 
+% Las tablas las escriben los scripts en resultados/. Si una tabla es mas
+% ancha que el texto, se reduce para que quepa.
+\newsavebox{\cajatabla}
+\newcommand{\tabla}[1]{%
+  \sbox{\cajatabla}{\input{../resultados/#1.tex}}%
+  \ifdim\wd\cajatabla>\linewidth
+    \resizebox{\linewidth}{!}{\usebox{\cajatabla}}%
+  \else
+    \usebox{\cajatabla}%
+  \fi}
+
 \title{Tarea 3: Introducción a Series de Tiempo\\
        \large Análisis y Ciencia de Datos}
 \author{Herman Andrés Echeverría Rojas\\
@@ -45,7 +56,7 @@ semillas documentadas en el código.
 
 % Las secciones se agregan conforme se resuelve cada parte.
 \input{secciones/parte0}
-% \input{secciones/parte1}
+\input{secciones/parte1}
 % \input{secciones/parte2}
 % \input{secciones/parte3}
 % \input{secciones/parte4}

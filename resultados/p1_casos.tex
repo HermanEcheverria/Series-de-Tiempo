@@ -1,0 +1,15 @@
+\begin{tabular}{lrrl}
+\toprule
+Caso & Filas & Monto neto (\pounds) & Decisión \\
+\midrule
+(a) Duplicados exactos & 5,268 & 21,740.98 & Se va \\
+(b) Facturas con prefijo C & 9,288 & -896,812.49 & Se queda (resta) \\
+(b) Facturas con prefijo A & 3 & -11,062.06 & Se va \\
+(c) Códigos que no son productos & 2,297 & 29,406.91 & Se va \\
+(c) Códigos en minúscula & 1,943 & 30,702.15 & Se transforma \\
+(d) Precio negativo & 2 & -22,124.12 & Se va \\
+(d) Precio cero & 2,515 & 0.00 & Se va \\
+(e) Cantidad negativa sin ser cancelación & 1,336 & 0.00 & Se va \\
+(f) Sin CustomerID & 135,080 & 1,447,682.12 & Serie: se queda; RFM: se va \\
+\bottomrule
+\end{tabular}
