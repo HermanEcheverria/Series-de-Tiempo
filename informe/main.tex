@@ -1,0 +1,78 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[spanish, es-noshorthands, es-nodecimaldot, es-tabla]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage[hidelinks]{hyperref}
+
+% babel-spanish redefine \% para anadirle un espacio fino, y eso choca con
+% las unidades de pegamento cuando aparece en tablas o cerca de modo
+% matematico. Se restaura el caracter simple.
+\AtBeginDocument{\DeclareRobustCommand{\%}{\char37}}
+
+\graphicspath{{../figuras/}}
+
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+
+\title{Tarea 3: Introducción a Series de Tiempo\\
+       \large Análisis y Ciencia de Datos}
+\author{Herman Andrés Echeverría Rojas\\
+        \small Facultad de Ingeniería, Universidad del Istmo de Guatemala}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Este documento acompaña al repositorio
+\url{https://github.com/HermanEcheverria/Series-de-Tiempo}.
+Todas las figuras y tablas que aparecen aquí las generan los scripts del
+repositorio a partir del archivo original \texttt{Online Retail.xlsx} y de las
+semillas documentadas en el código.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% Las secciones se agregan conforme se resuelve cada parte.
+% \input{secciones/parte0}
+% \input{secciones/parte1}
+% \input{secciones/parte2}
+% \input{secciones/parte3}
+% \input{secciones/parte4}
+% \input{secciones/parte5}
+% \input{secciones/parte6}
+
+\begin{thebibliography}{9}
+
+\bibitem{chen_datos}
+  D. Chen. \emph{Online Retail} [conjunto de datos].
+  UCI Machine Learning Repository, 2015.
+  \url{https://archive.ics.uci.edu/dataset/352/online+retail}
+
+\bibitem{chen_rfm}
+  D. Chen, S. L. Sain y K. Guo. ``Data mining for the online retail industry:
+  A case study of RFM model-based customer segmentation using data mining''.
+  \emph{Journal of Database Marketing \& Customer Strategy Management}
+  19.3 (2012), pp.~197--208.
+
+\bibitem{fpp2}
+  R. J. Hyndman y G. Athanasopoulos. \emph{Forecasting: Principles and
+  Practice}, 2a ed. OTexts, Melbourne, 2018.
+  \url{https://otexts.com/fpp2/}
+
+\bibitem{tsay}
+  R. S. Tsay. \emph{Analysis of Financial Time Series}, 2a ed. Wiley, 2005.
+
+\end{thebibliography}
+
+\end{document}

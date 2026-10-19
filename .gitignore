@@ -1,0 +1,26 @@
+# Datos: el .xlsx original (22.6 MB) se descarga de UCI y no se versiona.
+datos/
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# LaTeX
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# El PDF del informe SI se versiona: es entregable.
+!informe/main.pdf
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
