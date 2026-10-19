@@ -1,0 +1,272 @@
+\section{Parte 5: pronóstico y fuga}
+\label{sec:parte5}
+
+Cada modelo está implementado en \texttt{parte5.py} como una función que
+recibe la serie, el origen (un domingo) y los días abiertos de la semana
+siguiente, y que solo puede mirar la serie hasta el origen. El origen móvil
+sigue exactamente las reglas del enunciado: los objetivos son los días
+abiertos de lunes a domingo después del origen; en (b) no se evalúa nada
+después del 30 de septiembre y en (c) el último día es el 8 de diciembre; para
+S1 y S2 el horizonte es la posición del objetivo entre los días abiertos
+posteriores al origen; y el MAE y el RMSE juntan todos los días pronosticados.
+En (b) hay 22 orígenes, del 1 de mayo al 25 de septiembre, con 128 días
+evaluados; en (c) hay 10, del 2 de octubre al 4 de diciembre, con 58.
+
+\subsection{Inciso 5.1: los modelos}
+
+\begin{itemize}
+  \item \textbf{B1}: el promedio de todos los días abiertos hasta el origen.
+  \item \textbf{B2} (\emph{naive} estacional): para cada objetivo, la venta del
+    mismo día de la semana abierto más reciente hasta el origen.
+  \item \textbf{M1}: OLS de $y_t$ contra $t$ (días desde el 1 de diciembre de
+    2010) y las seis indicadoras de día de la semana.
+  \item \textbf{M2}: OLS de $y_t$ contra las seis indicadoras, $y_{t-7}$ y
+    $y_{t-14}$. Si el día del rezago está cerrado se usa el mismo día de la
+    semana abierto más reciente; el código verifica con un \texttt{assert} el
+    ejemplo del enunciado (para el 9 de mayo, $y_{t-7}$ es la venta del 18 de
+    abril, \pounds31\,402). Para $y_{t-14}$ se aplica la misma regla, así que
+    el 9 de mayo sus dos rezagos son el 18 de abril. Las 12 filas del inicio
+    que no tienen rezago no se usan para ajustar.
+  \item \textbf{S1} y \textbf{S2}: los modelos del inciso 4.3, reajustados en
+    cada origen con todos los días abiertos hasta el origen y llevados a
+    libras con $\exp(\cdot)$.
+\end{itemize}
+
+\paragraph{¿Por qué M2 puede usar $y_{t-7}$ pero no $y_{t-1}$?} El
+pronóstico se hace el domingo para toda la semana siguiente. Para cualquier
+objetivo de lunes a domingo, siete días antes cae en el domingo de origen o
+antes, así que $y_{t-7}$ ya se observó: el lunes usa el lunes anterior y el
+domingo usa el propio domingo de origen. En cambio, $y_{t-1}$ solo se conoce
+para el lunes; para el martes, $y_{t-1}$ es el lunes, que el domingo todavía
+no ha ocurrido. Una regresión que lo usara como variable necesitaría un dato
+del futuro.
+
+\paragraph{¿Cómo usa S1 el rezago 1 de todas formas?} De forma recursiva. Un
+modelo autorregresivo pronostica un paso a la vez y, cuando le falta un
+valor, usa su propio pronóstico en su lugar: $\hat y_{t+2} = c + \phi\,\hat
+y_{t+1} + \dots$. El filtro de Kalman de \texttt{SARIMAX} hace exactamente
+eso. Por eso la información del último día observado se diluye como $\phi^h$
+conforme crece el horizonte $h$: con $\phi\approx0.13$, para el martes ya casi
+no queda nada del domingo. M2 no puede hacer esto porque es una regresión
+directa: no pronostica sus propias variables.
+
+\paragraph{Convergencia en cada origen.} Se reajustan S1 y S2 en los 32
+orígenes de (b) y (c), con la configuración del inciso 4.3
+(\texttt{maxiter=500}), y se revisa \texttt{mle\_retvals['converged']} en
+cada uno. S2 convergió en los 32. S1 convergió en 31; en el del 1 de mayo
+L-BFGS se detuvo en la iteración 52 con \texttt{warnflag=2}, que significa que
+la búsqueda de línea ya no lograba mejorar. No fue por falta de iteraciones:
+con 1\,000 o 2\,000 se detiene en el mismo punto, con un gradiente del orden
+de $10^{-4}$. El código reintenta con BFGS, que sí converge, a los mismos
+parámetros hasta el segundo decimal y con log-verosimilitud $-80.3911$ contra
+$-80.3912$. Los pronósticos cambian menos de \pounds12. Es decir, el ajuste
+estaba en el óptimo y el optimizador no lo pudo certificar; aun así se usa el
+ajuste que sí convergió.
+
+\subsection{Inciso 5.2: tres formas de estimar el error}
+
+La tabla~\ref{tab:p5_errores} reúne los tres esquemas. En (a), cada celda es
+la media $\pm$ la desviación estándar sobre las 10 semillas
+(\texttt{SEMILLAS\_CV} en \texttt{semillas.py}) de una validación cruzada
+aleatoria de 5 \emph{folds} sobre los días abiertos del entrenamiento.
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p5_errores}
+  \caption{MAE y RMSE en libras: (a) validación cruzada aleatoria de 5
+  \emph{folds} en el entrenamiento, con 10 semillas; (b) origen móvil semanal
+  en el entrenamiento, orígenes de mayo a septiembre; (c) origen móvil
+  semanal en la prueba.}
+  \label{tab:p5_errores}
+\end{table}
+
+\paragraph{¿Por qué no tiene sentido (a) para B2, S1 y S2?} Porque los tres
+dependen del orden de la serie, y la validación cruzada aleatoria lo destruye.
+Al sacar al azar un 20\% de los días, el día a pronosticar queda rodeado de
+días de entrenamiento \emph{posteriores} a él. Para B2, ``el mismo día de la
+semana más reciente'' de un día de marzo podría ser un día de abril, y eso ya
+no es un pronóstico sino una interpolación. S1 y S2 necesitan la secuencia
+completa para que $B$ y $B^6$ signifiquen ``ayer'' y ``hace una semana'': con
+huecos aleatorios el rezago $k$ deja de ser un rezago fijo, y el filtro, al
+estimar un día faltante, usaría los días siguientes. B1, M1 y M2 son
+regresiones cuyas filas se pueden repartir entre \emph{folds}, así que
+mecánicamente sí se puede calcular (a) para ellas. Pero también están
+contaminadas: M1 estima la pendiente con días posteriores al que pronostica, y
+el nivel de los días vecinos (que son los que más se parecen) siempre queda
+en el entrenamiento.
+
+\paragraph{¿Cuál se acerca más a (c)?} El origen móvil. Para M1 y M2, (b)
+da errores más grandes que (a) y, por lo tanto, más cercanos a (c): M2 pasa
+de 8\,345 en (a) a 9\,258 en (b), contra 15\,219 en (c), y M1 de 9\,129 a
+9\,833, contra 15\,203. Para B1 los dos esquemas coinciden (10\,271 y
+10\,253): la media histórica no tiene cómo aprovechar a los vecinos de un
+día, así que la validación aleatoria no le regala nada. La validación cruzada aleatoria es
+la más optimista porque es la que más información del futuro deja entrar.
+
+\paragraph{¿Alguna se acerca de verdad?} No. El error en la prueba es entre
+1.25 y 2.2 veces el de (b), y además el orden de los modelos cambia por
+completo. En (b) el mejor es M2 y S2 queda cuarto, por delante solo de B1 y
+B2; en (c) S2 es claramente el mejor y M2 queda en el lugar cuatro, empatado
+con M1. Ninguna estimación hecha dentro del entrenamiento habría escogido el
+modelo ganador. El inciso 5.5 discute por qué.
+
+\subsection{Inciso 5.3: qué modelo gana en la prueba}
+
+\textbf{Gana S2}, con MAE de \pounds12\,545 y RMSE de \pounds15\,901: un 13\%
+menos de MAE que el segundo lugar (B2, \pounds14\,409) y un 18\% menos que M1
+y M2. La figura~\ref{fig:p5_prueba} muestra los pronósticos de todos los
+modelos contra la serie real.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{p5_pronosticos_prueba.png}
+  \caption{Pronósticos con origen móvil semanal en la prueba (octubre a
+  diciembre de 2011) contra la venta real. Cada línea punteada es un domingo
+  de origen; cada modelo pronostica los seis días abiertos que le siguen.}
+  \label{fig:p5_prueba}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p5_sesgo}
+  \caption{Error medio en la prueba (real menos pronóstico), en libras. Un
+  valor positivo significa que el modelo se queda corto.}
+  \label{tab:p5_sesgo}
+\end{table}
+
+\paragraph{Por qué gana S2.} La prueba es la temporada navideña: la venta
+media de los días evaluados en (c) es \pounds49\,800, contra \pounds29\,500
+en (b). La tabla~\ref{tab:p5_sesgo} muestra qué hace cada modelo con ese
+cambio de nivel. B1, M1, M2 y S1 se quedan cortos, en promedio, por
+\pounds13\,000 a \pounds20\,500 diarios. B1 promedia todo el año. M1 ajusta
+una sola recta a un año que fue plano ocho meses y luego subió, y la recta
+queda por debajo del final. M2 le da poco peso a los rezagos (el día de la
+semana explica casi todo en el entrenamiento). Y S1, como se vio en el inciso
+4.5, regresa a una media estimada con enero a septiembre. En la
+figura~\ref{fig:p5_prueba} se ve que sus pronósticos tienen la forma semanal
+correcta pero quedan sistemáticamente por debajo de la línea negra a partir
+de noviembre.
+
+Solo dos modelos casi no tienen sesgo: B2 (\pounds2\,743) y S2
+(\pounds1\,187). Los dos parten de lo que pasó la semana anterior y, por lo
+tanto, siguen el nivel. La diferencia entre ellos es el ruido: B2 copia una
+sola semana, con todos sus picos, así que cuando el martes anterior tuvo un
+pedido excepcional lo repite (para el lunes 21 de noviembre pronostica
+\pounds110 mil porque ese fue el pico real del lunes 14; la venta fue de
+\pounds47 mil). S2 hace lo mismo pero promediando: sus
+términos de promedio móvil, $\theta=-0.91$ y $\Theta=-0.67$, convierten la
+diferencia en un promedio exponencialmente ponderado de las semanas
+recientes. Sigue el nivel como B2, pero sin copiar el ruido.
+
+Esto es coherente con el diagnóstico del inciso 4.4: S2 fue el único modelo
+cuyos residuos parecían ruido blanco, porque fue el único que capturó el
+nivel que se mueve. S1 dejaba autocorrelación en los residuos, justamente por
+ese nivel, y en la prueba eso se convierte en sesgo. En (b), de mayo a
+septiembre, el nivel fue estable y modelos que regresan a la media no pagaban
+ese costo; la flexibilidad de S2 solo le añadía varianza. En la prueba, el
+nivel se movió y esa flexibilidad es la que gana.
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p5_semanas}
+  \caption{MAE de cada semana de la prueba, en miles de libras. ``Mejor'' es
+  el modelo con menor MAE esa semana.}
+  \label{tab:p5_semanas}
+\end{table}
+
+La victoria no es de todas las semanas (tabla~\ref{tab:p5_semanas}): S2 es el
+mejor en 5 de las 10 y M1 en 3, siempre en semanas tranquilas, sin cambio de
+nivel. Pero S2 nunca tiene una semana desastrosa, y por eso gana en el total.
+Los errores más grandes de todos los modelos vienen de días con pedidos
+excepcionales, como el lunes 14 de noviembre (\pounds110 mil), que ningún
+modelo podía anticipar.
+
+\subsection{Inciso 5.4: la trampa}
+
+Se agrega a M2 la media móvil centrada de 7 días de la Parte 3, calculada una
+sola vez sobre toda la serie, como una variable más.
+
+\begin{table}[H]
+  \centering
+  \small
+  \tabla{p5_trampa}
+  \caption{M2 con y sin la media móvil centrada como predictor. (a):
+  promedio sobre 10 semillas; (b): origen móvil en el entrenamiento.}
+  \label{tab:p5_trampa}
+\end{table}
+
+\paragraph{Se ve mejor.} Mucho mejor: el MAE baja de 8\,345 a 7\,450 en (a) y
+de 9\,258 a 8\,377 en (b), alrededor de un 10\% en los dos esquemas
+(tabla~\ref{tab:p5_trampa}). El ajuste con todo el entrenamiento le da a la
+media móvil un coeficiente de 1.05 y deja los rezagos en prácticamente cero
+(0.01 y 0.05): el modelo descubre que la mejor forma de pronosticar la venta
+de un día es ``la media móvil de ese día más el efecto del día de la semana''.
+
+\paragraph{Por qué es ilegal.} Porque $MA_t$ contiene el futuro. La media
+centrada del día $t$ promedia de $y_{t-3}$ a $y_{t+3}$, así que incluye la
+venta del propio día que se quiere pronosticar ($y_t$, con peso $1/7$) y la
+de los tres días siguientes. El domingo de origen, para pronosticar el lunes
+se necesitarían las ventas de lunes a jueves; para pronosticar el jueves,
+hasta las del domingo siguiente. Ningún dato de la semana objetivo existe
+cuando se hace el pronóstico.
+
+\paragraph{Por qué el origen móvil no lo detecta.} Porque el origen móvil solo
+controla qué \emph{filas} entran al ajuste; no revisa cómo se calcularon las
+\emph{variables} de esas filas. Si la media móvil se calcula una vez sobre toda
+la serie y luego se parte en orígenes, la columna \texttt{ma7} del lunes
+objetivo ya trae adentro las ventas de la semana objetivo, aunque esas filas
+no se hayan usado para estimar los coeficientes. La fuga está en la
+construcción de la variable, antes de la validación, y ninguna partición de
+filas la puede ver. La única defensa es recalcular cada variable en cada
+origen usando solo datos hasta el origen, y con la media centrada eso es
+imposible para la semana objetivo.
+
+\paragraph{Por qué (c) no se puede calcular sin hacer trampa.} En la prueba,
+para el origen del 2 de octubre la media móvil de los objetivos necesita las
+ventas del 3 al 11 de octubre, que son precisamente los valores que se están
+evaluando. Calcular (c) con esa variable es darle al modelo parte de la
+respuesta del examen. La versión honesta requeriría pronosticar primero la
+media móvil, es decir, pronosticar las ventas de la semana, que es justo el
+problema que se quería resolver. Por eso esta variable no tiene versión
+legítima para pronosticar, y por eso su mejora en (a) y (b) es una ilusión.
+
+\subsection{Inciso 5.5: por qué el entrenamiento se queda corto}
+
+Todas las estimaciones hechas dentro del entrenamiento subestiman el error de
+la prueba. Hay dos causas, y conviene separarlas.
+
+\paragraph{1. Cómo se partieron los datos.} La validación cruzada aleatoria
+deja que el modelo aprenda del futuro y que el día pronosticado esté rodeado
+de días vecinos en el entrenamiento, que comparten su nivel. Es lo que separa
+(a) de (b): de 8\,345 a 9\,258 en M2, de 9\,129 a 9\,833 en M1. \emph{Esta
+causa sí se arregla con una mejor validación}: el origen móvil reproduce las
+condiciones reales del pronóstico (solo pasado, horizonte de una semana) y la
+elimina.
+
+\paragraph{2. La serie cambió.} La prueba es la temporada navideña, con una
+venta media de \pounds49\,800 contra \pounds29\,500 de los días evaluados en
+(b), y los errores crecen con el nivel. Si el MAE se divide entre la venta
+media de los días evaluados, los modelos tienen errores relativos parecidos
+en los dos periodos: entre 31\% y 38\% en (b), y entre 25\% y 45\% en (c). M2,
+por ejemplo, tiene un 31\% en ambos. Lo que más cambia es para quién: B1 y
+S1, que regresan a la media, empeoran en términos relativos; S2 y B2, que
+siguen el nivel, mejoran. \emph{Esta causa no se arregla con ninguna
+validación}: no existe forma de que una validación dentro de enero a
+septiembre mida cómo se comporta un modelo en un régimen que el entrenamiento
+nunca contuvo. Lo único que ayuda es tener datos de ese régimen, o un modelo
+que se adapte a cambios de nivel (como S2), y aun así sin poder medir de
+antemano cuánto.
+
+\paragraph{¿Se puede estimar la estacionalidad anual con un año de datos?}
+No. Para estimar un patrón que se repite cada año hay que verlo repetirse,
+es decir, al menos dos años completos; FPP2 lo plantea igual para cualquier
+estacionalidad. Con un año, cada día del año aparece una sola vez, y el
+``efecto noviembre'' es indistinguible de una tendencia, de un cambio en la
+clientela o de un evento único: los tres producen la misma subida desde
+septiembre. Además, el único otro diciembre de los datos (el de 2010) está
+partido por el cierre de Navidad. Es justamente lo que le faltó a todos los
+modelos: ninguno sabía que el cuarto trimestre vende el doble, porque en el
+entrenamiento no había un cuarto trimestre del cual aprenderlo.

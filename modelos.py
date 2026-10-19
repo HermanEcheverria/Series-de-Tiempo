@@ -19,13 +19,13 @@ CONFIG = {
 MAXITER = 500
 
 
-def ajustar(nombre, valores, maxiter=MAXITER):
+def ajustar(nombre, valores, maxiter=MAXITER, method="lbfgs"):
     """Ajusta S1 o S2 sobre log(valores). valores es un arreglo, sin fechas."""
     modelo = SARIMAX(np.log(np.asarray(valores, dtype=float)), **CONFIG[nombre])
     with warnings.catch_warnings():
         # La convergencia se revisa explicitamente con mle_retvals.
         warnings.simplefilter("ignore", ConvergenceWarning)
-        return modelo.fit(disp=False, maxiter=maxiter)
+        return modelo.fit(disp=False, maxiter=maxiter, method=method)
 
 
 def pronosticar(resultado, pasos):
