@@ -12,11 +12,11 @@
 \usepackage{booktabs}
 \usepackage{float}
 \usepackage[hidelinks]{hyperref}
+\usepackage{xurl}
 
-% babel-spanish redefine \% para anadirle un espacio fino, y eso choca con
-% las unidades de pegamento cuando aparece en tablas o cerca de modo
-% matematico. Se restaura el caracter simple.
-\AtBeginDocument{\DeclareRobustCommand{\%}{\char37}}
+% Margen extra para que los nombres largos de funciones no se salgan de la
+% linea.
+\setlength{\emergencystretch}{2em}
 
 \graphicspath{{../figuras/}}
 
@@ -33,7 +33,7 @@
 
 \begin{abstract}
 \noindent
-Este documento acompaña al repositorio
+Este documento acompaña al repositorio\\
 \url{https://github.com/HermanEcheverria/Series-de-Tiempo}.
 Todas las figuras y tablas que aparecen aquí las generan los scripts del
 repositorio a partir del archivo original \texttt{Online Retail.xlsx} y de las
@@ -44,7 +44,7 @@ semillas documentadas en el código.
 \newpage
 
 % Las secciones se agregan conforme se resuelve cada parte.
-% \input{secciones/parte0}
+\input{secciones/parte0}
 % \input{secciones/parte1}
 % \input{secciones/parte2}
 % \input{secciones/parte3}
